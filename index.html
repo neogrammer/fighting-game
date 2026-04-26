@@ -68,13 +68,23 @@
   font-size: 24px;
   text-align: center;
 }
+html,
+body {
+  margin: 0;
+  overflow: hidden;
+  touch-action: none;
+}
+
+canvas {
+  display: block;
+}
     </style>
     </head>
 <body>
     <!-- Red Container div-->
     <div class="press-start-2p-regular" style="position: relative; display: inline-block;">
         <!-- smaller red container div -->
-        <div style="position: absolute; display:flex; width:100%; align-items:center;padding:20px;">
+        <div style="position: absolute;  z-index:10; display:flex; width:100%; align-items:center;padding:20px;">
             <!-- player health -->
             <div style="position:relative; border-top: 4px solid grey;border-left: 4px solid grey;border-bottom: 4px solid grey; width:100%; display:flex; justify-content:flex-end;" >
               <div  style="background-color:red; height:30px; width:100%"></div>
