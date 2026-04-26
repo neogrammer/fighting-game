@@ -1,122 +1,243 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <title>Document</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
-        * {
-            box-sizing: border-box;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
-        div {
-            font-family: "Press Start 2P", system-ui;
-            font-weight: 400;
-            font-style: normal;
-        }
-        #mobileControls {
-  display: none;
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 20;
-}
+  <title>Fighting Game</title>
 
-.mobile-button {
-  pointer-events: auto;
-  position: absolute;
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  border: 2px solid rgba(255,255,255,.45);
-  background: rgba(255,255,255,.18);
-  color: white;
-  font-size: 22px;
-  font-weight: bold;
-  user-select: none;
-  touch-action: none;
-}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 
-#dpad {
-  position: absolute;
-  left: 35px;
-  bottom: 35px;
-  width: 170px;
-  height: 170px;
-  pointer-events: auto;
-}
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
-#btnLeft { left: 0; top: 50px; }
-#btnRight { right: 0; top: 50px; }
-#btnJump { right: 130px; bottom: 70px; }
-#btnAttack { right: 35px; bottom: 35px; }
+    * {
+      box-sizing: border-box;
+    }
 
-#rotatePrompt {
-  display: none;
-  position: absolute;
-  inset: 0;
-  z-index: 30;
-  background: rgba(0,0,0,.75);
-  color: white;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  text-align: center;
-}
-html,
-body {
-  margin: 0;
-  overflow: hidden;
-  touch-action: none;
-}
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: black;
+      touch-action: none;
+    }
 
-canvas {
-  display: block;
-}
-    </style>
-    </head>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    div,
+    button {
+      font-family: "Press Start 2P", system-ui;
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    #gameWrapper {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: black;
+    }
+
+    #gameWrapper canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: black;
+    }
+
+    #hud {
+      position: absolute;
+      z-index: 10;
+      display: flex;
+      width: 100%;
+      align-items: center;
+      padding: 20px;
+      pointer-events: none;
+    }
+
+    #playerHealthContainer {
+      position: relative;
+      border-top: 4px solid grey;
+      border-left: 4px solid grey;
+      border-bottom: 4px solid grey;
+      width: 100%;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    #enemyHealthContainer {
+      position: relative;
+      border-top: 4px solid grey;
+      border-right: 4px solid grey;
+      border-bottom: 4px solid grey;
+      width: 100%;
+    }
+
+    .healthBack {
+      background-color: red;
+      height: 30px;
+      width: 100%;
+    }
+
+    #playerHealth {
+      position: absolute;
+      background: yellow;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 100%;
+    }
+
+    #enemyHealth {
+      position: absolute;
+      background: yellow;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+    }
+
+    #timer {
+      background-color: black;
+      border: 4px solid grey;
+      color: white;
+      width: 100px;
+      height: 50px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #displayText {
+      position: absolute;
+      z-index: 15;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      right: 0;
+      color: white;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    #mobileControls {
+      display: none;
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 20;
+    }
+
+    .mobile-button {
+      pointer-events: auto;
+      position: absolute;
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.45);
+      background: rgba(255, 255, 255, 0.18);
+      color: white;
+      font-size: 22px;
+      font-weight: bold;
+      user-select: none;
+      touch-action: none;
+    }
+
+    #dpad {
+      position: absolute;
+      left: max(35px, env(safe-area-inset-left));
+      bottom: max(35px, env(safe-area-inset-bottom));
+      width: 170px;
+      height: 170px;
+      pointer-events: auto;
+    }
+
+    #btnLeft {
+      left: 0;
+      top: 50px;
+    }
+
+    #btnRight {
+      right: 0;
+      top: 50px;
+    }
+
+    #btnJump {
+      right: max(130px, calc(env(safe-area-inset-right) + 130px));
+      bottom: max(70px, calc(env(safe-area-inset-bottom) + 70px));
+    }
+
+    #btnAttack {
+      right: max(35px, env(safe-area-inset-right));
+      bottom: max(35px, env(safe-area-inset-bottom));
+    }
+
+    #rotatePrompt {
+      display: none;
+      position: absolute;
+      inset: 0;
+      z-index: 30;
+      background: rgba(0, 0, 0, 0.75);
+      color: white;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      text-align: center;
+      padding: 24px;
+    }
+  </style>
+</head>
+
 <body>
-    <!-- Red Container div-->
-    <div class="press-start-2p-regular" style="position: relative; display: inline-block;">
-        <!-- smaller red container div -->
-        <div style="position: absolute;  z-index:10; display:flex; width:100%; align-items:center;padding:20px;">
-            <!-- player health -->
-            <div style="position:relative; border-top: 4px solid grey;border-left: 4px solid grey;border-bottom: 4px solid grey; width:100%; display:flex; justify-content:flex-end;" >
-              <div  style="background-color:red; height:30px; width:100%"></div>
-              <div id="playerHealth" style="position: absolute; background: yellow; top: 0; right: 0; bottom: 0; width:100%"></div>
-            </div>
-            <!-- timer -->
-            <div id="timer" style="background-color: black; border: 4px solid grey; color:white; width:100px; height:50px; flex-shrink:0;  display: flex; align-items:center;justify-content:center;">
-                10
-            </div>
-            <!--  enemy health -->
-            <div style="position:relative;  border-top: 4px solid grey;border-right: 4px solid grey;border-bottom: 4px solid grey; width:100%;" >
-              <div  style="background-color:red; height:30px;"></div>
-              <div id="enemyHealth" style="position: absolute; background: yellow; top: 0; right: 0; bottom: 0; left:0"></div>
-            </div>
-        </div>
-        
-        <div  id='displayText' style="position:absolute; top:0;left:0;bottom:0;right:0;color:white;display:none; align-items:center;justify-content:center;">Tie</div>
+  <div id="gameWrapper" class="press-start-2p-regular">
+    <div id="hud">
+      <div id="playerHealthContainer">
+        <div class="healthBack"></div>
+        <div id="playerHealth"></div>
+      </div>
+
+      <div id="timer">10</div>
+
+      <div id="enemyHealthContainer">
+        <div class="healthBack"></div>
+        <div id="enemyHealth"></div>
+      </div>
+    </div>
+
+    <div id="displayText">Tie</div>
+
     <div id="rotatePrompt">Rotate your device sideways</div>
 
-<div id="mobileControls">
-  <div id="dpad">
-    <button id="btnLeft" class="mobile-button">←</button>
-    <button id="btnRight" class="mobile-button">→</button>
+    <div id="mobileControls">
+      <div id="dpad">
+        <button id="btnLeft" class="mobile-button">←</button>
+        <button id="btnRight" class="mobile-button">→</button>
+      </div>
+
+      <button id="btnJump" class="mobile-button">J</button>
+      <button id="btnAttack" class="mobile-button">A</button>
+    </div>
+
+    <canvas></canvas>
   </div>
 
-  <button id="btnJump" class="mobile-button">J</button>
-  <button id="btnAttack" class="mobile-button">A</button>
-</div>
-        <canvas></canvas>
-    </div>
-    <script src="js/utils.js"></script>    
-    <script src="js/classes.js"></script>
-    <script src="./index.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/classes.js"></script>
+  <script src="./index.js"></script>
 </body>
 </html>
