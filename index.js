@@ -524,3 +524,105 @@ window.addEventListener('keyup', (event) => {
       break;
   }
 });
+
+const isTouchDevice =
+  navigator.maxTouchPoints > 0 ||
+  window.matchMedia("(pointer: coarse)").matches;
+
+const mobileControls = document.querySelector("#mobileControls");
+const rotatePrompt = document.querySelector("#rotatePrompt");
+
+function isLandscape() {
+  return window.innerWidth > window.innerHeight;
+}
+
+function updateMobileUi() {
+  if (!isTouchDevice) return;
+
+  mobileControls.style.display = "block";
+  rotatePrompt.style.display = isLandscape() ? "none" : "flex";
+}
+
+async function tryLockLandscape() {
+  try {
+    if (document.documentElement.requestFullscreen) {
+      await document.documentElement.requestFullscreen();
+    }
+
+    if (screen.orientation && screen.orientation.lock) {
+      await screen.orientation.lock("landscape");
+    }
+  } catch (error) {
+    console.log("Landscape lock not available:", error);
+  }
+}
+
+function bindHoldButton(buttonId, onDown, onUp) {
+  const button = document.querySelector(buttonId);
+
+  button.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    button.setPointerCapture(event.pointerId);
+    tryLockLandscape();
+    onDown();
+  });
+
+  button.addEventListener("pointerup", (event) => {
+    event.preventDefault();
+    onUp();
+  });
+
+  button.addEventListener("pointercancel", (event) => {
+    event.preventDefault();
+    onUp();
+  });
+
+  button.addEventListener("lostpointercapture", () => {
+    onUp();
+  });
+}
+
+function bindTapButton(buttonId, onTap) {
+  const button = document.querySelector(buttonId);
+
+  button.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    tryLockLandscape();
+    onTap();
+  });
+}
+
+if (isTouchDevice) {
+  updateMobileUi();
+
+  window.addEventListener("resize", updateMobileUi);
+  window.addEventListener("orientationchange", updateMobileUi);
+
+  bindHoldButton(
+    "#btnLeft",
+    () => {
+      keys.a.pressed = true;
+    },
+    () => {
+      keys.a.pressed = false;
+    }
+  );
+
+  bindHoldButton(
+    "#btnRight",
+    () => {
+      keys.d.pressed = true;
+    },
+    () => {
+      keys.d.pressed = false;
+    }
+  );
+
+  bindTapButton("#btnJump", () => {
+    player.startJump();
+  });
+
+  bindTapButton("#btnAttack", () => {
+    player.tryAttack();
+  });
+}
