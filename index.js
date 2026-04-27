@@ -8,10 +8,10 @@ c.fillRect(0, 0, 1024, 576);
 const gravity = 0.7;
 
 // While testing on same Wi-Fi, use your Pi's local IP:
-const MULTIPLAYER_SERVER_URL = "http://192.168.0.10:3000";
+//const MULTIPLAYER_SERVER_URL = "http://192.168.0.10:3000";
 
 // Later with DuckDNS + HTTPS/Caddy:
-// const MULTIPLAYER_SERVER_URL = "https://fightinggame86.netlify.app";
+const MULTIPLAYER_SERVER_URL = "https://cidfighter.duckdns.org";
 
 window.multiplayerReady = false;
 
