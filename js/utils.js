@@ -12,42 +12,21 @@ function rectangularCollision({ rectangle1, rectangle2 }) {
 let gameOver = false;
 let winnerDisplayed = false;
 
-function determineWinner({ player, enemy })
-{
-  if (winnerDisplayed) {
-    return;
-  }
-
-  winnerDisplayed = true;
-  document.querySelector('#displayText').style.display = 'flex';
-
-  if (player.health === enemy.health) {
-    document.querySelector('#displayText').innerHTML = 'Tie';
-  }
-  else if (player.health > enemy.health) {
-    document.querySelector('#displayText').innerHTML = 'Player 1 Wins';
-  }
-  else {
-    document.querySelector('#displayText').innerHTML = 'Player 2 Wins';
-  }
-
-  gameOver = true;
+function getWinnerText({ player, enemy }) {
+  if (player.health === enemy.health) return "Tie";
+  if (player.health > enemy.health) return "Player 1 Wins";
+  return "Player 2 Wins";
 }
 
-let timer = 60;
+function determineWinner({ player, enemy })
+{
+  if (winnerDisplayed) return;
 
-function decreaseTimer() {
-  if (!gameOver)
-  {
-    if (timer > 0)
-    {
-      setTimeout(decreaseTimer, 1000);
-      timer--;
-      document.querySelector('#timer').innerHTML = timer;
-    }
+  winnerDisplayed = true;
 
-    if (timer === 0) {
-      determineWinner({ player, enemy });
-    }
-  }
+  const displayText = document.querySelector('#displayText');
+  displayText.style.display = 'flex';
+  displayText.innerHTML = getWinnerText({ player, enemy });
+
+  gameOver = true;
 }

@@ -7,91 +7,23 @@ c.fillRect(0, 0, 1024, 576);
 
 const gravity = 0.7;
 
-// While testing on same Wi-Fi, use your Pi's local IP:
-//const MULTIPLAYER_SERVER_URL = "http://192.168.0.10:3000";
-
-// Later with DuckDNS + HTTPS/Caddy:
+// Public backend through Caddy/DuckDNS.
 const MULTIPLAYER_SERVER_URL = "https://cidfighter.duckdns.org";
 
-window.multiplayerReady = false;
+const ROUND_TIME_SECONDS = 60;
+const HOST_SNAPSHOT_RATE_MS = 50; // 20 snapshots per second
 
-let connectedToServer = false;
 let myRole = "spectator";
+let connectedToServer = false;
+let multiplayerReady = false;
+let matchStarted = false;
+
+let roundTimeRemaining = ROUND_TIME_SECONDS;
+let roundStartTime = 0;
+let lastSnapshotSentAt = 0;
 
 const socket = io(MULTIPLAYER_SERVER_URL, {
   transports: ["websocket", "polling"]
-});
-
-function isPlayerRole(role) {
-  return role === "player1" || role === "player2";
-}
-
-function showOverlay(text) {
-  if (gameOver) return;
-
-  const displayText = document.querySelector("#displayText");
-  displayText.style.display = "flex";
-  displayText.innerHTML = text;
-}
-
-function hideOverlay() {
-  if (gameOver) return;
-
-  const displayText = document.querySelector("#displayText");
-  displayText.style.display = "none";
-}
-
-function updateRoomOverlay() {
-  if (!connectedToServer) {
-    showOverlay("Connecting...");
-    return;
-  }
-
-  if (!window.multiplayerReady) {
-    if (myRole === "player1") {
-      showOverlay("You are Player 1<br>Waiting for Player 2");
-    } else if (myRole === "player2") {
-      showOverlay("You are Player 2<br>Waiting for Player 1");
-    } else {
-      showOverlay("Spectating<br>Waiting for both players");
-    }
-
-    return;
-  }
-
-  hideOverlay();
-}
-
-socket.on("connect", () => {
-  connectedToServer = true;
-  console.log("Connected:", socket.id);
-  updateRoomOverlay();
-});
-
-socket.on("connect_error", (error) => {
-  connectedToServer = false;
-  window.multiplayerReady = false;
-  console.log("Server connection failed:", error.message);
-  showOverlay("Cannot reach server<br>Check Pi URL");
-});
-
-socket.on("role", (role) => {
-  myRole = role;
-  console.log("Assigned role:", myRole);
-  updateRoomOverlay();
-});
-
-socket.on("roomState", (state) => {
-  window.multiplayerReady = state.player1Connected && state.player2Connected;
-  console.log("Room:", state);
-  updateRoomOverlay();
-});
-
-socket.on("remoteInput", ({ role, input }) => {
-  if (!isPlayerRole(role)) return;
-  if (role === myRole) return;
-
-  applyRoleInput(role, input);
 });
 
 const SPRITE_BASE = {
@@ -387,27 +319,165 @@ const shop = new Sprite({
 });
 
 const keys = {
-  a: {
-    pressed: false
-  },
-  d: {
-    pressed: false
-  },
-  w: {
-    pressed: false
-  },
-  l: {
-    pressed: false
-  },
-  r: {
-    pressed: false
-  },
-  u: {
-    pressed: false
-  },
+  a: { pressed: false },
+  d: { pressed: false },
+  w: { pressed: false },
+  l: { pressed: false },
+  r: { pressed: false },
+  u: { pressed: false },
 };
 
-function applyRoleInput(role, input) {
+function isHost()
+{
+  return myRole === "player1";
+}
+
+function isPlayerRole(role)
+{
+  return role === "player1" || role === "player2";
+}
+
+function showOverlay(text)
+{
+  if (gameOver) return;
+
+  const displayText = document.querySelector("#displayText");
+  displayText.style.display = "flex";
+  displayText.innerHTML = text;
+}
+
+function hideOverlay()
+{
+  if (gameOver) return;
+
+  const displayText = document.querySelector("#displayText");
+  displayText.style.display = "none";
+}
+
+function updateRoomOverlay()
+{
+  if (!connectedToServer) {
+    showOverlay("Connecting...");
+    return;
+  }
+
+  if (!multiplayerReady) {
+    if (myRole === "player1") {
+      showOverlay("You are Player 1<br>Waiting for Player 2");
+    }
+    else if (myRole === "player2") {
+      showOverlay("You are Player 2<br>Waiting for Player 1");
+    }
+    else {
+      showOverlay("Spectating<br>Waiting for both players");
+    }
+
+    return;
+  }
+
+  if (!matchStarted) {
+    showOverlay("Match starting...");
+    return;
+  }
+
+  hideOverlay();
+}
+
+function setTimerDisplay(value)
+{
+  document.querySelector("#timer").innerHTML = Math.max(0, Math.ceil(value));
+}
+
+function updateHealthBars()
+{
+  document.querySelector('#playerHealth').style.width = player.health + '%';
+  document.querySelector('#enemyHealth').style.width = enemy.health + '%';
+}
+
+function showWinnerTextFromSnapshot()
+{
+  const displayText = document.querySelector("#displayText");
+  displayText.style.display = "flex";
+
+  if (player.health === enemy.health) {
+    displayText.innerHTML = "Tie";
+  } else if (player.health > enemy.health) {
+    displayText.innerHTML = "Player 1 Wins";
+  } else {
+    displayText.innerHTML = "Player 2 Wins";
+  }
+}
+
+socket.on("connect", () => {
+  connectedToServer = true;
+  console.log("Connected to multiplayer server:", socket.id);
+  updateRoomOverlay();
+});
+
+socket.on("connect_error", (error) => {
+  connectedToServer = false;
+  multiplayerReady = false;
+  matchStarted = false;
+  console.log("Could not connect to multiplayer server:", error.message);
+  showOverlay("Cannot reach server<br>Check Pi URL");
+});
+
+socket.on("role", (role) => {
+  myRole = role;
+  console.log("Assigned role:", myRole);
+  updateRoomOverlay();
+});
+
+socket.on("roomState", (state) => {
+  multiplayerReady = state.player1Connected && state.player2Connected;
+  console.log("Room state:", state);
+
+  if (!multiplayerReady) {
+    matchStarted = false;
+    gameOver = false;
+    winnerDisplayed = false;
+    roundTimeRemaining = ROUND_TIME_SECONDS;
+    setTimerDisplay(roundTimeRemaining);
+  }
+
+  updateRoomOverlay();
+});
+
+socket.on("matchReady", () => {
+  multiplayerReady = true;
+
+  if (isHost() && !matchStarted) {
+    startHostMatch();
+  }
+
+  updateRoomOverlay();
+});
+
+socket.on("hostInput", ({ role, input }) => {
+  if (!isHost()) return;
+  applyRoleInput(role, input);
+});
+
+socket.on("snapshot", (snapshot) => {
+  if (isHost()) return;
+  applySnapshot(snapshot);
+});
+
+function startHostMatch()
+{
+  matchStarted = true;
+  gameOver = false;
+  winnerDisplayed = false;
+  roundStartTime = performance.now();
+  roundTimeRemaining = ROUND_TIME_SECONDS;
+  setTimerDisplay(roundTimeRemaining);
+  hideOverlay();
+
+  sendSnapshot(true);
+}
+
+function applyRoleInput(role, input)
+{
   const fighter = role === "player1" ? player : enemy;
 
   if (input.action === "left") {
@@ -417,7 +487,6 @@ function applyRoleInput(role, input) {
       keys.l.pressed = input.pressed;
     }
   }
-
   else if (input.action === "right") {
     if (role === "player1") {
       keys.d.pressed = input.pressed;
@@ -425,43 +494,37 @@ function applyRoleInput(role, input) {
       keys.r.pressed = input.pressed;
     }
   }
-
   else if (input.action === "jump") {
     fighter.startJump();
   }
-
   else if (input.action === "jumpRelease") {
     if (fighter.velocity.y < 0) {
       fighter.velocity.y = 0;
     }
   }
-
   else if (input.action === "attack") {
     fighter.tryAttack();
   }
 }
 
-function sendAndApplyLocalInput(input) {
-  if (!window.multiplayerReady) return;
+function sendLocalInput(input)
+{
+  if (!multiplayerReady) return;
   if (!isPlayerRole(myRole)) return;
 
-  applyRoleInput(myRole, input);
-  socket.emit("input", input);
-}
+  // Host applies immediately. Non-host waits for snapshots.
+  if (isHost()) {
+    applyRoleInput(myRole, input);
+  }
 
-function updateHealthBars()
-{
-  document.querySelector('#playerHealth').style.width = player.health + '%';
-  document.querySelector('#enemyHealth').style.width = enemy.health + '%';
+  socket.emit("input", input);
 }
 
 function applyMovementInput(fighter, leftPressed, rightPressed)
 {
   fighter.velocity.x = 0;
 
-  if (!fighter.canMove()) {
-    return;
-  }
+  if (!fighter.canMove()) return;
 
   if (leftPressed && !rightPressed) {
     fighter.velocity.x = -fighter.movementSpeed;
@@ -491,44 +554,179 @@ function applyMovementInput(fighter, leftPressed, rightPressed)
 
 function applyHit(attacker, defender, defenderHealthSelector, consoleText)
 {
-  if (!attacker.canHit()) {
-    return;
-  }
-
-  if (!rectangularCollision({ rectangle1: attacker, rectangle2: defender })) {
-    return;
-  }
+  if (!attacker.canHit()) return;
+  if (!rectangularCollision({ rectangle1: attacker, rectangle2: defender })) return;
 
   attacker.attackHasHit = true;
   defender.receiveHit(attacker.attackDamage);
 
   document.querySelector(defenderHealthSelector).style.width = defender.health + '%';
-
   console.log(consoleText);
 }
 
 function bothDeathAnimationsAreReady()
 {
-  if (player.health <= 0 && !player.hasFinishedDeath()) {
-    return false;
-  }
-
-  if (enemy.health <= 0 && !enemy.hasFinishedDeath()) {
-    return false;
-  }
-
+  if (player.health <= 0 && !player.hasFinishedDeath()) return false;
+  if (enemy.health <= 0 && !enemy.hasFinishedDeath()) return false;
   return player.health <= 0 || enemy.health <= 0;
 }
 
-decreaseTimer();
+function updateHostTimer(timestamp)
+{
+  if (!matchStarted || gameOver) return;
+
+  const elapsedSeconds = (timestamp - roundStartTime) / 1000;
+  roundTimeRemaining = Math.max(0, ROUND_TIME_SECONDS - elapsedSeconds);
+  setTimerDisplay(roundTimeRemaining);
+
+  if (roundTimeRemaining <= 0) {
+    determineWinner({ player, enemy });
+  }
+}
+
+function buildFighterSnapshot(fighter)
+{
+  return {
+    x: fighter.position.x,
+    y: fighter.position.y,
+    vx: fighter.velocity.x,
+    vy: fighter.velocity.y,
+    facingRight: fighter.facingRight,
+    flipX: fighter.flipX,
+    state: fighter.state,
+    health: fighter.health,
+    canJump: fighter.canJump,
+    isAttacking: fighter.isAttacking,
+    attackHasHit: fighter.attackHasHit,
+    comboWindowOpen: fighter.comboWindowOpen,
+    comboWindowOpenedForAttack: fighter.comboWindowOpenedForAttack,
+    comboWindowExpiresAt: fighter.comboWindowExpiresAt,
+    queuedAttack2: fighter.queuedAttack2,
+    deathAnimationFinished: fighter.deathAnimationFinished,
+    currentFrame: fighter.currentSprite ? fighter.currentSprite.currentFrame : 0,
+    finishedAnimation: fighter.currentSprite ? fighter.currentSprite.finishedAnimation : false
+  };
+}
+
+function applyFighterSnapshot(fighter, snapshot)
+{
+  fighter.position.x = snapshot.x;
+  fighter.position.y = snapshot.y;
+  fighter.velocity.x = snapshot.vx;
+  fighter.velocity.y = snapshot.vy;
+  fighter.facingRight = snapshot.facingRight;
+  fighter.flipX = snapshot.flipX;
+  fighter.health = snapshot.health;
+  fighter.canJump = snapshot.canJump;
+  fighter.isAttacking = snapshot.isAttacking;
+  fighter.attackHasHit = snapshot.attackHasHit;
+  fighter.comboWindowOpen = snapshot.comboWindowOpen;
+  fighter.comboWindowOpenedForAttack = snapshot.comboWindowOpenedForAttack;
+  fighter.comboWindowExpiresAt = snapshot.comboWindowExpiresAt;
+  fighter.queuedAttack2 = snapshot.queuedAttack2;
+  fighter.deathAnimationFinished = snapshot.deathAnimationFinished;
+
+  if (fighter.state !== snapshot.state) {
+    fighter.setState(snapshot.state, true);
+  }
+
+  if (fighter.currentSprite) {
+    fighter.currentSprite.currentFrame = snapshot.currentFrame;
+    fighter.currentSprite.finishedAnimation = snapshot.finishedAnimation;
+  }
+
+  fighter.updateAttackBox();
+}
+
+function buildSnapshot()
+{
+  return {
+    matchStarted,
+    gameOver,
+    winnerDisplayed,
+    roundTimeRemaining,
+    player: buildFighterSnapshot(player),
+    enemy: buildFighterSnapshot(enemy)
+  };
+}
+
+function applySnapshot(snapshot)
+{
+  matchStarted = snapshot.matchStarted;
+  roundTimeRemaining = snapshot.roundTimeRemaining;
+
+  applyFighterSnapshot(player, snapshot.player);
+  applyFighterSnapshot(enemy, snapshot.enemy);
+
+  gameOver = snapshot.gameOver;
+  winnerDisplayed = snapshot.winnerDisplayed;
+
+  setTimerDisplay(roundTimeRemaining);
+  updateHealthBars();
+
+  if (gameOver) {
+    showWinnerTextFromSnapshot();
+  } else {
+    updateRoomOverlay();
+  }
+}
+
+function sendSnapshot(force = false)
+{
+  const now = performance.now();
+
+  if (!force && now - lastSnapshotSentAt < HOST_SNAPSHOT_RATE_MS) return;
+
+  lastSnapshotSentAt = now;
+  socket.emit("hostSnapshot", buildSnapshot());
+}
+
+function updateHost(timestamp)
+{
+  if (!multiplayerReady || !matchStarted) {
+    player.velocity.x = 0;
+    enemy.velocity.x = 0;
+    player.update(timestamp);
+    enemy.update(timestamp);
+    return;
+  }
+
+  updateHostTimer(timestamp);
+
+  if (!gameOver) {
+    applyMovementInput(player, keys.a.pressed, keys.d.pressed);
+    applyMovementInput(enemy, keys.l.pressed, keys.r.pressed);
+  } else {
+    player.velocity.x = 0;
+    enemy.velocity.x = 0;
+  }
+
+  player.update(timestamp);
+  enemy.update(timestamp);
+
+  if (!gameOver) {
+    applyHit(player, enemy, '#enemyHealth', 'player hit enemy');
+    applyHit(enemy, player, '#playerHealth', 'enemy hit player');
+
+    if (bothDeathAnimationsAreReady()) {
+      determineWinner({ player, enemy });
+    }
+  }
+
+  sendSnapshot();
+}
+
+function updateRemoteViewer(timestamp)
+{
+  // Non-hosts do NOT simulate movement, collision, health, or timer.
+  // They just draw the latest host-owned snapshot.
+  player.draw(timestamp);
+  enemy.draw(timestamp);
+}
 
 function animate(timestamp) 
 {
   window.requestAnimationFrame(animate);
-
-  if (gameOver) {
-    return;
-  }
 
   c.fillStyle = 'black';
   c.fillRect(0, 0, canvas.width, canvas.height);
@@ -536,28 +734,10 @@ function animate(timestamp)
   background.update(timestamp);
   shop.update(timestamp);
 
-  if (window.multiplayerReady) {
-  applyMovementInput(player, keys.a.pressed, keys.d.pressed);
-  if (player.facingRight)
-    player.flipX = true;
-  else
-    player.flipX = false;
-  applyMovementInput(enemy, keys.l.pressed, keys.r.pressed);
-} else {
-    player.velocity.x = 0;
-  enemy.velocity.x = 0;
-}
-
-  player.update(timestamp);
-  enemy.update(timestamp);
-
-  if (window.multiplayerReady) {
-  applyHit(player, enemy, '#enemyHealth', 'player hit enemy');
-  applyHit(enemy, player, '#playerHealth', 'enemy hit player');
-}
-
-  if (bothDeathAnimationsAreReady()) {
-    determineWinner({ player, enemy });
+  if (isHost()) {
+    updateHost(timestamp);
+  } else {
+    updateRemoteViewer(timestamp);
   }
 }
 
@@ -569,106 +749,83 @@ let isArrowDown = false;
 window.addEventListener('keydown', (event) => {
   if (event.repeat) return;
 
-  switch(event.key) {
+  switch(event.key)
+  {
     case 'd':
-      if (myRole === "player1") {
-        sendAndApplyLocalInput({ action: "right", pressed: true });
-      }
+      if (myRole === "player1") sendLocalInput({ action: "right", pressed: true });
       break;
 
     case 'a':
-      if (myRole === "player1") {
-        sendAndApplyLocalInput({ action: "left", pressed: true });
-      }
+      if (myRole === "player1") sendLocalInput({ action: "left", pressed: true });
       break;
 
     case 'w':
-      if (myRole === "player1") {
-        sendAndApplyLocalInput({ action: "jump" });
-      }
-      break;
-
-    case " ":
-      if (!isSpaceDown && myRole === "player1") {
-        sendAndApplyLocalInput({ action: "attack" });
-      }
-      isSpaceDown = true;
+      if (myRole === "player1") sendLocalInput({ action: "jump" });
       break;
 
     case 'ArrowRight':
-      if (myRole === "player2") {
-        sendAndApplyLocalInput({ action: "right", pressed: true });
-      }
+      if (myRole === "player2") sendLocalInput({ action: "right", pressed: true });
       break;
 
     case 'ArrowLeft':
-      if (myRole === "player2") {
-        sendAndApplyLocalInput({ action: "left", pressed: true });
-      }
+      if (myRole === "player2") sendLocalInput({ action: "left", pressed: true });
       break;
 
     case 'ArrowUp':
-      if (myRole === "player2") {
-        sendAndApplyLocalInput({ action: "jump" });
-      }
+      if (myRole === "player2") sendLocalInput({ action: "jump" });
+      break;
+
+    case " ":
+      if (!isSpaceDown && myRole === "player1") sendLocalInput({ action: "attack" });
+      isSpaceDown = true;
       break;
 
     case "ArrowDown":
-      if (!isArrowDown && myRole === "player2") {
-        sendAndApplyLocalInput({ action: "attack" });
-      }
+      if (!isArrowDown && myRole === "player2") sendLocalInput({ action: "attack" });
       isArrowDown = true;
       break;
   }
 });
 
 window.addEventListener('keyup', (event) => {
-  switch(event.key) {
+  switch(event.key)
+  {
     case 'd':
-      if (myRole === "player1") {
-        sendAndApplyLocalInput({ action: "right", pressed: false });
-      }
+      if (myRole === "player1") sendLocalInput({ action: "right", pressed: false });
       break;
 
     case 'a':
-      if (myRole === "player1") {
-        sendAndApplyLocalInput({ action: "left", pressed: false });
-      }
+      if (myRole === "player1") sendLocalInput({ action: "left", pressed: false });
       break;
 
     case 'w':
-      if (myRole === "player1") {
-        sendAndApplyLocalInput({ action: "jumpRelease" });
-      }
+      if (myRole === "player1") sendLocalInput({ action: "jumpRelease" });
+      break;
+
+    case 'ArrowRight':
+      if (myRole === "player2") sendLocalInput({ action: "right", pressed: false });
+      break;
+
+    case 'ArrowLeft':
+      if (myRole === "player2") sendLocalInput({ action: "left", pressed: false });
+      break;
+
+    case 'ArrowUp':
+      if (myRole === "player2") sendLocalInput({ action: "jumpRelease" });
       break;
 
     case " ":
       isSpaceDown = false;
       break;
 
-    case 'ArrowRight':
-      if (myRole === "player2") {
-        sendAndApplyLocalInput({ action: "right", pressed: false });
-      }
-      break;
-
-    case 'ArrowLeft':
-      if (myRole === "player2") {
-        sendAndApplyLocalInput({ action: "left", pressed: false });
-      }
-      break;
-
-    case 'ArrowUp':
-      if (myRole === "player2") {
-        sendAndApplyLocalInput({ action: "jumpRelease" });
-      }
-      break;
-
-    case "ArrowDown":
+    case 'ArrowDown':
       isArrowDown = false;
       break;
   }
 });
+
+// Mobile controls
+
 const isTouchDevice =
   navigator.maxTouchPoints > 0 ||
   window.matchMedia("(pointer: coarse)").matches;
@@ -743,22 +900,42 @@ if (isTouchDevice) {
   window.addEventListener("orientationchange", updateMobileUi);
 
   bindHoldButton(
-  "#btnLeft",
-  () => sendAndApplyLocalInput({ action: "left", pressed: true }),
-  () => sendAndApplyLocalInput({ action: "left", pressed: false })
-);
+    "#btnLeft",
+    () => {
+      if (myRole === "player1" || myRole === "player2") {
+        sendLocalInput({ action: "left", pressed: true });
+      }
+    },
+    () => {
+      if (myRole === "player1" || myRole === "player2") {
+        sendLocalInput({ action: "left", pressed: false });
+      }
+    }
+  );
 
-bindHoldButton(
-  "#btnRight",
-  () => sendAndApplyLocalInput({ action: "right", pressed: true }),
-  () => sendAndApplyLocalInput({ action: "right", pressed: false })
-);
+  bindHoldButton(
+    "#btnRight",
+    () => {
+      if (myRole === "player1" || myRole === "player2") {
+        sendLocalInput({ action: "right", pressed: true });
+      }
+    },
+    () => {
+      if (myRole === "player1" || myRole === "player2") {
+        sendLocalInput({ action: "right", pressed: false });
+      }
+    }
+  );
 
-bindTapButton("#btnJump", () => {
-  sendAndApplyLocalInput({ action: "jump" });
-});
+  bindTapButton("#btnJump", () => {
+    if (myRole === "player1" || myRole === "player2") {
+      sendLocalInput({ action: "jump" });
+    }
+  });
 
-bindTapButton("#btnAttack", () => {
-  sendAndApplyLocalInput({ action: "attack" });
-});
+  bindTapButton("#btnAttack", () => {
+    if (myRole === "player1" || myRole === "player2") {
+      sendLocalInput({ action: "attack" });
+    }
+  });
 }
