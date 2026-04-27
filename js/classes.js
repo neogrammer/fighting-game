@@ -172,7 +172,8 @@ class Fighter
     jumpVelocity = -20,
     attackDamage = 5,
     comboWindowMs = 300,
-    showDebugBoxes = true
+    showDebugBoxes = true,
+    invertFlipX = false
   }) 
   {
     this.position = position;
@@ -219,6 +220,7 @@ class Fighter
     this.deathAnimationFinished = false;
 
     this.showDebugBoxes = showDebugBoxes;
+    this.invertFlipX = invertFlipX;
 
     this.createSprites(spriteConfigs);
     this.setState(FighterState.IDLE, true);
@@ -526,7 +528,7 @@ class Fighter
   draw(timestamp) 
   {
     if (this.currentSprite) {
-      this.currentSprite.flipX = this.flipX;
+      this.currentSprite.flipX = this.invertFlipX ? !this.flipX : this.flipX;
       this.currentSprite.update(timestamp);
     }
 

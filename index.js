@@ -198,8 +198,8 @@ const player = new Fighter({
     y: 0
   },
 
-  facingRight: false,
-
+  facingRight: false,  
+  invertFlipX: true,
   spriteConfigs: PLAYER_SPRITES,
 
   attackBoxes: {
@@ -246,7 +246,7 @@ const enemy = new Fighter({
   },
 
   facingRight: true,
-
+  invertFlipX: false,
   spriteConfigs: ENEMY_SPRITES,
 
   attackBoxes: {
