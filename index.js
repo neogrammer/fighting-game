@@ -7,6 +7,93 @@ c.fillRect(0, 0, 1024, 576);
 
 const gravity = 0.7;
 
+// While testing on same Wi-Fi, use your Pi's local IP:
+const MULTIPLAYER_SERVER_URL = "http://192.168.0.10:3000";
+
+// Later with DuckDNS + HTTPS/Caddy:
+// const MULTIPLAYER_SERVER_URL = "https://fightinggame86.netlify.app";
+
+window.multiplayerReady = false;
+
+let connectedToServer = false;
+let myRole = "spectator";
+
+const socket = io(MULTIPLAYER_SERVER_URL, {
+  transports: ["websocket", "polling"]
+});
+
+function isPlayerRole(role) {
+  return role === "player1" || role === "player2";
+}
+
+function showOverlay(text) {
+  if (gameOver) return;
+
+  const displayText = document.querySelector("#displayText");
+  displayText.style.display = "flex";
+  displayText.innerHTML = text;
+}
+
+function hideOverlay() {
+  if (gameOver) return;
+
+  const displayText = document.querySelector("#displayText");
+  displayText.style.display = "none";
+}
+
+function updateRoomOverlay() {
+  if (!connectedToServer) {
+    showOverlay("Connecting...");
+    return;
+  }
+
+  if (!window.multiplayerReady) {
+    if (myRole === "player1") {
+      showOverlay("You are Player 1<br>Waiting for Player 2");
+    } else if (myRole === "player2") {
+      showOverlay("You are Player 2<br>Waiting for Player 1");
+    } else {
+      showOverlay("Spectating<br>Waiting for both players");
+    }
+
+    return;
+  }
+
+  hideOverlay();
+}
+
+socket.on("connect", () => {
+  connectedToServer = true;
+  console.log("Connected:", socket.id);
+  updateRoomOverlay();
+});
+
+socket.on("connect_error", (error) => {
+  connectedToServer = false;
+  window.multiplayerReady = false;
+  console.log("Server connection failed:", error.message);
+  showOverlay("Cannot reach server<br>Check Pi URL");
+});
+
+socket.on("role", (role) => {
+  myRole = role;
+  console.log("Assigned role:", myRole);
+  updateRoomOverlay();
+});
+
+socket.on("roomState", (state) => {
+  window.multiplayerReady = state.player1Connected && state.player2Connected;
+  console.log("Room:", state);
+  updateRoomOverlay();
+});
+
+socket.on("remoteInput", ({ role, input }) => {
+  if (!isPlayerRole(role)) return;
+  if (role === myRole) return;
+
+  applyRoleInput(role, input);
+});
+
 const SPRITE_BASE = {
   scale: 2.5,
   texOffset: {
@@ -320,6 +407,48 @@ const keys = {
   },
 };
 
+function applyRoleInput(role, input) {
+  const fighter = role === "player1" ? player : enemy;
+
+  if (input.action === "left") {
+    if (role === "player1") {
+      keys.a.pressed = input.pressed;
+    } else {
+      keys.l.pressed = input.pressed;
+    }
+  }
+
+  else if (input.action === "right") {
+    if (role === "player1") {
+      keys.d.pressed = input.pressed;
+    } else {
+      keys.r.pressed = input.pressed;
+    }
+  }
+
+  else if (input.action === "jump") {
+    fighter.startJump();
+  }
+
+  else if (input.action === "jumpRelease") {
+    if (fighter.velocity.y < 0) {
+      fighter.velocity.y = 0;
+    }
+  }
+
+  else if (input.action === "attack") {
+    fighter.tryAttack();
+  }
+}
+
+function sendAndApplyLocalInput(input) {
+  if (!window.multiplayerReady) return;
+  if (!isPlayerRole(myRole)) return;
+
+  applyRoleInput(myRole, input);
+  socket.emit("input", input);
+}
+
 function updateHealthBars()
 {
   document.querySelector('#playerHealth').style.width = player.health + '%';
@@ -407,18 +536,25 @@ function animate(timestamp)
   background.update(timestamp);
   shop.update(timestamp);
 
+  if (window.multiplayerReady) {
   applyMovementInput(player, keys.a.pressed, keys.d.pressed);
   if (player.facingRight)
     player.flipX = true;
   else
     player.flipX = false;
   applyMovementInput(enemy, keys.l.pressed, keys.r.pressed);
+} else {
+    player.velocity.x = 0;
+  enemy.velocity.x = 0;
+}
 
   player.update(timestamp);
   enemy.update(timestamp);
 
+  if (window.multiplayerReady) {
   applyHit(player, enemy, '#enemyHealth', 'player hit enemy');
   applyHit(enemy, player, '#playerHealth', 'enemy hit player');
+}
 
   if (bothDeathAnimationsAreReady()) {
     determineWinner({ player, enemy });
@@ -431,87 +567,78 @@ let isSpaceDown = false;
 let isArrowDown = false;
 
 window.addEventListener('keydown', (event) => {
-  if (event.repeat) {
-    return;
-  }
+  if (event.repeat) return;
 
-  switch(event.key)
-  {
+  switch(event.key) {
     case 'd':
-      keys.d.pressed = true;
+      if (myRole === "player1") {
+        sendAndApplyLocalInput({ action: "right", pressed: true });
+      }
       break;
 
     case 'a':
-      keys.a.pressed = true;
+      if (myRole === "player1") {
+        sendAndApplyLocalInput({ action: "left", pressed: true });
+      }
       break;
 
     case 'w':
-      player.startJump();
-      break;
-
-    case 'ArrowRight':
-      keys.r.pressed = true;
-      break;
-
-    case 'ArrowLeft':
-      keys.l.pressed = true;
-      break;
-
-    case 'ArrowUp':
-      keys.u.pressed = true;
-      enemy.startJump();
+      if (myRole === "player1") {
+        sendAndApplyLocalInput({ action: "jump" });
+      }
       break;
 
     case " ":
-      if (!isSpaceDown) {
-        player.tryAttack();
+      if (!isSpaceDown && myRole === "player1") {
+        sendAndApplyLocalInput({ action: "attack" });
       }
-
       isSpaceDown = true;
       break;
 
-    case "ArrowDown":
-      if (!isArrowDown) {
-        enemy.tryAttack();
+    case 'ArrowRight':
+      if (myRole === "player2") {
+        sendAndApplyLocalInput({ action: "right", pressed: true });
       }
+      break;
 
+    case 'ArrowLeft':
+      if (myRole === "player2") {
+        sendAndApplyLocalInput({ action: "left", pressed: true });
+      }
+      break;
+
+    case 'ArrowUp':
+      if (myRole === "player2") {
+        sendAndApplyLocalInput({ action: "jump" });
+      }
+      break;
+
+    case "ArrowDown":
+      if (!isArrowDown && myRole === "player2") {
+        sendAndApplyLocalInput({ action: "attack" });
+      }
       isArrowDown = true;
       break;
   }
 });
 
 window.addEventListener('keyup', (event) => {
-  switch(event.key)
-  {
+  switch(event.key) {
     case 'd':
-      keys.d.pressed = false;
-      break;
-
-    case 'a':
-      keys.a.pressed = false;
-      break;
-
-    case 'w':
-      keys.w.pressed = false;
-
-      if (player.velocity.y < 0) {
-        player.velocity.y = 0;
+      if (myRole === "player1") {
+        sendAndApplyLocalInput({ action: "right", pressed: false });
       }
       break;
 
-    case 'ArrowRight':
-      keys.r.pressed = false;
+    case 'a':
+      if (myRole === "player1") {
+        sendAndApplyLocalInput({ action: "left", pressed: false });
+      }
       break;
 
-    case 'ArrowLeft':
-      keys.l.pressed = false;
-      break;
-
-    case 'ArrowUp':
-      keys.u.pressed = false;
-
-      if (enemy.velocity.y < 0) {
-        enemy.velocity.y = 0;
+    case 'w':
+      if (myRole === "player1") {
+        sendAndApplyLocalInput({ action: "jumpRelease" });
       }
       break;
 
@@ -519,12 +646,29 @@ window.addEventListener('keyup', (event) => {
       isSpaceDown = false;
       break;
 
-    case 'ArrowDown':
+    case 'ArrowRight':
+      if (myRole === "player2") {
+        sendAndApplyLocalInput({ action: "right", pressed: false });
+      }
+      break;
+
+    case 'ArrowLeft':
+      if (myRole === "player2") {
+        sendAndApplyLocalInput({ action: "left", pressed: false });
+      }
+      break;
+
+    case 'ArrowUp':
+      if (myRole === "player2") {
+        sendAndApplyLocalInput({ action: "jumpRelease" });
+      }
+      break;
+
+    case "ArrowDown":
       isArrowDown = false;
       break;
   }
 });
-
 const isTouchDevice =
   navigator.maxTouchPoints > 0 ||
   window.matchMedia("(pointer: coarse)").matches;
@@ -599,30 +743,22 @@ if (isTouchDevice) {
   window.addEventListener("orientationchange", updateMobileUi);
 
   bindHoldButton(
-    "#btnLeft",
-    () => {
-      keys.a.pressed = true;
-    },
-    () => {
-      keys.a.pressed = false;
-    }
-  );
+  "#btnLeft",
+  () => sendAndApplyLocalInput({ action: "left", pressed: true }),
+  () => sendAndApplyLocalInput({ action: "left", pressed: false })
+);
 
-  bindHoldButton(
-    "#btnRight",
-    () => {
-      keys.d.pressed = true;
-    },
-    () => {
-      keys.d.pressed = false;
-    }
-  );
+bindHoldButton(
+  "#btnRight",
+  () => sendAndApplyLocalInput({ action: "right", pressed: true }),
+  () => sendAndApplyLocalInput({ action: "right", pressed: false })
+);
 
-  bindTapButton("#btnJump", () => {
-    player.startJump();
-  });
+bindTapButton("#btnJump", () => {
+  sendAndApplyLocalInput({ action: "jump" });
+});
 
-  bindTapButton("#btnAttack", () => {
-    player.tryAttack();
-  });
+bindTapButton("#btnAttack", () => {
+  sendAndApplyLocalInput({ action: "attack" });
+});
 }
